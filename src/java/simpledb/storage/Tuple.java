@@ -14,6 +14,7 @@ public class Tuple implements Serializable {
     private static final long serialVersionUID = 1L;
     private TupleDesc td;
     private RecordId recordId;
+    private Field[] fields;
     /**
      * Create a new tuple with the specified schema (type).
      *
@@ -23,6 +24,7 @@ public class Tuple implements Serializable {
      */
     public Tuple(TupleDesc td) {
         // some code goes here
+        fields = new Field[td.numFields()];
         this.td = td;
         this.recordId = null;
     }
@@ -66,7 +68,7 @@ public class Tuple implements Serializable {
      *            new value for the field.
      */
     public void setField(int i, Field f) {
-        // some code goes here
+        fields[i] = f;
     }
 
     /**
@@ -76,8 +78,7 @@ public class Tuple implements Serializable {
      *            field index to return. Must be a valid index.
      */
     public Field getField(int i) {
-        // some code goes here
-        return null;
+        return fields[i];
     }
 
     /**
@@ -90,7 +91,16 @@ public class Tuple implements Serializable {
      */
     public String toString() {
         // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        String s = "";
+
+        for (int i = 0; i < fields.length; i++) {
+            s += fields[i];
+            if (i != fields.length - 1){
+                s += "\t";
+            }
+        }
+
+        return s;
     }
 
     /**
@@ -99,8 +109,7 @@ public class Tuple implements Serializable {
      * */
     public Iterator<Field> fields()
     {
-        // some code goes here
-        return null;
+        return Arrays.asList(fields).iterator();
     }
 
     /**
@@ -108,6 +117,6 @@ public class Tuple implements Serializable {
      * */
     public void resetTupleDesc(TupleDesc td)
     {
-        // some code goes here
+        this.td = td;
     }
 }

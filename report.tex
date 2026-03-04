@@ -1,0 +1,64 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\setlength{\parskip}{4pt}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\titlespacing*{\subsection}{0pt}{5pt}{2pt}
+
+\title{\vspace{-1.5em}\textbf{Lab 1: SimpleDB Storage Layer --- Writeup}\vspace{-0.5em}}
+\author{Jithin Bathula (1007114) \and Tan Yi Xuan Xavier (1006965)}
+\date{March 4, 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\section{Design Decisions}
+
+\subsection{Tuple and TupleDesc (Exercise 1)}
+\texttt{TupleDesc} stores field metadata in a fixed-size \texttt{TDItem[]} array, where each item pairs a \texttt{Type} with an optional field name. An array was chosen over a \texttt{List} because the schema is immutable after construction, and arrays provide better cache locality and direct indexing. The \texttt{equals()} method compares only field types (not names), consistent with structural type equivalence. \texttt{Tuple} mirrors this with a \texttt{Field[]} array. Its \texttt{RecordId} is initially null and set only after page insertion, decoupling tuple creation from storage location.
+
+\subsection{Catalog (Exercise 2)}
+The \texttt{Catalog} uses a dual-\texttt{HashMap} indexing strategy: one map keyed by table ID (\texttt{int $\to$ TableInfo}) and another by table name (\texttt{String $\to$ Integer}). This enables O(1) lookups for both access patterns. A private inner class \texttt{TableInfo} encapsulates the \texttt{DbFile}, name, and primary key into a single object. When a table is re-added with a duplicate name or ID, the old entry is removed first to prevent stale references.
+
+\subsection{BufferPool (Exercise 3)}
+\texttt{getPage()} uses a \texttt{ConcurrentHashMap<PageId, Page>} as the page cache. On a cache miss, the page is fetched from disk via \texttt{DbFile.readPage()} and inserted. If the buffer is full, a \texttt{DbException} is thrown; eviction is deferred to Lab 3. \texttt{ConcurrentHashMap} was chosen for thread-safe concurrent reads without explicit synchronization.
+
+\subsection{HeapPageId and RecordId (Exercise 4)}
+Both identifier classes are immutable (\texttt{final} fields). \texttt{HeapPageId} is identified by table ID and page number; \texttt{RecordId} composes a \texttt{PageId} with a tuple slot number. Both use the polynomial hash formula ($31 \times a + b$) for good distribution as \texttt{HashMap} keys.
+
+\subsection{HeapPage (Exercise 4)}
+\texttt{HeapPage} uses a slotted-page format with a header bitmap (1 bit per slot). The slot count is $\lfloor (\text{pageSize} \times 8) / (\text{tupleSize} \times 8 + 1) \rfloor$, accounting for the header bit per slot. The header occupies $\lceil \text{numSlots} / 8 \rceil$ bytes. The \texttt{iterator()} returns only tuples in occupied slots by checking the bitmap.
+
+\subsection{HeapFile (Exercise 5)}
+Each table maps to a single OS file with its ID derived from \texttt{f.getAbsoluteFile().hashCode()} for stable cross-restart identification. \texttt{readPage()} uses \texttt{RandomAccessFile} to seek to \texttt{pageNumber $\times$ pageSize} and read one page, avoiding full-file loads. The file iterator (inner class \texttt{HeapFileIterator}) reads one page at a time through the \texttt{BufferPool}, advancing to the next page when the current one is exhausted---keeping memory usage constant regardless of table size.
+
+\subsection{SeqScan (Exercise 6)}
+\texttt{SeqScan} wraps the \texttt{DbFileIterator} from the underlying \texttt{HeapFile}, delegating all iteration logic. \texttt{getTupleDesc()} dynamically prefixes field names with the table alias (e.g., \texttt{alias.fieldName}), constructing a new \texttt{TupleDesc} on each call to avoid caching schemas that could become stale if \texttt{reset()} changes the alias.
+
+\section{Non-Trivial Implementation Details}
+
+\textbf{HeapPage deserialization.} The \texttt{HeapPage} constructor parses a raw byte array by first reading the header bitmap, then iterating over all slots. For occupied slots, it deserializes field values via a \texttt{DataInputStream} according to the \texttt{TupleDesc} types. Empty slots are skipped by advancing the stream by the tuple size in bytes. Each tuple receives a \texttt{RecordId} linking it to its page and slot.
+
+\textbf{HeapFileIterator page traversal.} The iterator maintains a page index and a per-page tuple iterator. When \texttt{hasNext()} finds the current page exhausted, it loads the next page via \texttt{BufferPool.getPage()} and obtains a fresh tuple iterator. This lazy page-loading integrates naturally with the buffer pool's caching layer and future eviction policies.
+
+\textbf{Slot bitmap operations.} Checking slot occupancy uses bit manipulation: \texttt{(header[i/8] >> (i \% 8)) \& 1}. This compact encoding stores occupancy for all slots using only a few bytes of overhead.
+
+\section{API Changes}
+
+No changes were made to the public API. All implementations conform to the interfaces and method signatures provided in the skeleton code.
+
+\section{Missing or Incomplete Elements}
+
+All six exercises are fully implemented and pass every provided unit test and system test (36 tests, 0 failures). The following features are intentionally deferred:
+
+\begin{itemize}[nosep]
+    \item \textbf{Buffer pool eviction:} Throws an exception when full; LRU eviction deferred to Lab 3.
+    \item \textbf{Page modification:} Insert/delete and write-back methods are stubbed, pending Lab 2.
+    \item \textbf{Transaction support:} \texttt{BufferPool} accepts \texttt{TransactionId} and \texttt{Permissions} but does not enforce locking or isolation, deferred to Lab 4.
+\end{itemize}
+
+\end{document}
